@@ -46,8 +46,12 @@ sub import {
   hook(type => "getsetup", id => "automap", call => \&getsetup);
   hook(type => "checkconfig", id => "automap", call => \&checkconfig);
   hook(type => "scan", id => "automap", call => \&scan);
-  hook(type => "preprocess", id => "mapitem", call => \&preprocess_mapitem);
-  hook(type => "preprocess", id => "automap", call => \&preprocess_automap);
+  hook(type => "preprocess", id => "automapitem", #scan => 1,
+       call => \&preprocess_item);
+  hook(type => "preprocess", id => "automap",
+       call => \&preprocess_map);
+  hook(type => "preprocess", id => "automapjson",
+       call => \&preprocess_json);
   hook(type => "pagetemplate", id => "automap", call => \&pagetemplate);
 }
 
@@ -94,7 +98,7 @@ sub checkconfig () {
     $config{automap_base} = 'mapitems';
   }
   my $base = $config{automap_base};
-  $data_regex = qr(^\Q$base\E/([\w-]+)/(node|way)_(\d+)._yaml$)o;
+  $data_regex = qr(^\Q$base\E/(node|way)_(\d+)._yaml$)o;
 }
 
 sub scan (@) {
@@ -103,21 +107,23 @@ sub scan (@) {
   my $content = $params{content};
 
   # Clean data for a page that's being rebuilt.
-  if (exists $pagestate{$page}{automap} and
-      exists $pagestate{$page}{automap}{mapitems} and
+  if (exists $pagestate{$page}{automap}{mapitems} and
       ref $pagestate{$page}{automap}{mapitems}) {
+    # Remove links to this page.
     foreach my $item (keys %{$pagestate{$page}{automap}{mapitems}}) {
-      if ($pagestate{$item}{automap}{backlink} and
+      if (exists $pagestate{$item}{automap}{backlink} and
+          defined $pagestate{$item}{automap}{backlink} and
           $pagestate{$item}{automap}{backlink} eq $page) {
         delete $pagestate{$item}{automap}{backlink};
       }
     }
     delete $pagestate{$page}{automap};
   }
+  # Continue only for data files.
   return if ($page !~ /$data_regex/ or not $content);
-  my ($map, $type, $id) = ($1, $2, $3);
+  my ($type, $id) = ($1, $2);
 
-  debug ("automap::scan $page $1 $2 $3");
+  debug ("automap::scan $page $type/$id");
   if ($yaml_impl eq 'YAML::XS') {
     # Stupid broken unicode support.
     utf8::encode($content);
@@ -141,101 +147,163 @@ sub scan (@) {
     warn(sprintf(gettext("automap: Data mismatch in %s.\n"), $page));
     return;
   }
-  $pagestate{$page}{automap} = $data;
-  $pagestate{$page}{automap}{map} = $map;
+  $pagestate{$page}{automap}{data} = $data;
 }
 
 #FIXME: check modifications.
-sub preprocess_mapitem (@) {
+sub preprocess_item (@) {
   my %params = @_;
   my $page = $params{page};
   my $destpage = $params{destpage};
   my $preview = $params{preview};
 
-  my $map = $params{map} || 'map';
+  my $embed = $params{embed};
   my $type = $params{type} || 'node';
   my $id = $params{id};
+
   if (not $id) {
-    error(gettext('mapitem: missing "id" parameter.'));
+    error(gettext('automapitem: missing "id" parameter.'));
   }
-  if ($type !~ /^(way|node)$/) {
-    error(gettext('mapitem: Invalid map item type: ') . $type);
+  if ($type !~ /^(way|node)$/o) {
+    error(gettext('automapitem: Invalid map item type: ') . $type);
   }
-  if ($id !~ /^\d+$/) {
-    error(gettext('mapitem: Invalid map item id: ') . $id);
+  if ($id !~ /^\d+$/o) {
+    error(gettext('automapitem: Invalid map item id: ') . $id);
   }
-  if ($map !~ /^[\w-]+$/) {
-    error(gettext('mapitem: Invalid map name: ' . $map));
-  }
-  my $datapage = "$config{automap_base}/${map}/${type}_${id}._yaml";
+  my $datapage = "$config{automap_base}/${type}_${id}._yaml";
   if (not exists $pagestate{$datapage} or
       not exists $pagestate{$datapage}{automap} or
-      not $pagestate{$datapage}{automap}) {
-    error(sprintf(gettext('mapitem: Map item not found: %s.'), $datapage));
+      not exists $pagestate{$datapage}{automap}{data} or
+      not $pagestate{$datapage}{automap}{data}) {
+    error(sprintf(gettext('automapitem: Map item not found: %s.'),
+                  $datapage));
   }
+#  debug('automap backlinks ' . join(' ', IkiWiki::backlink_pages($datapage)));
   if (exists $pagestate{$datapage}{automap}{backlink} and
       $pagestate{$datapage}{automap}{backlink} ne $page) {
-    error(gettext('mapitem: Duplicate linking to the same map item.'));
+    error(gettext('automapitem: Duplicate linking to the same map item.'));
   }
 
-  $pagestate{$datapage}{automap}{backlink} = $page;
-  $pagestate{$page}{automap}{mapitems}{$datapage} = '';
-  add_depends($page, "internal($datapage)");
+  if (not $preview) {
+    $pagestate{$datapage}{automap}{backlink} = $page;
+    $pagestate{$page}{automap}{mapitems}{$datapage} = undef;
+    add_depends($page, "internal($datapage)");
+  }
+
+  if ($embed) {
+    # FIXME
+  }
+
   return '';
 }
 
-# FIXME: orden de backlinks.
-sub preprocess_automap (@) {
+sub preprocess_map (@) {
+}
+
+sub preprocess_json (@) {
   my %params = @_;
   my $page = $params{page};
   my $destpage = $params{destpage};
   my $preview = $params{preview};
-  my $map = $params{map} || 'map';
-  my $layer = $params{layer} || 'mapitems';
 
-  my @result;
-  foreach my $mappage (keys %pagestate) {
-    next if (not exists $pagestate{$mappage}{automap} or
-             not exists $pagestate{$mappage}{automap}{map} or
-             $pagestate{$mappage}{automap}{map} ne $map);
-    my $mapdata = $pagestate{$mappage}{automap};
-    push @result, $mapdata;
-    add_depends($page, "internal($mappage)");
-    if (exists $mapdata->{backlink}) {
-      add_depends($page, $mapdata->{backlink});
+  my $layer = $params{layer} || '';
+  my $pages = exists $params{pages} ? $params{pages} : 'mapped(*)';
+  my $include_orphans;
+  if (exists $params{include_orphans}) {
+    $include_orphans = $params{include_orphans} || $config{automap_base};
+  }
+  unless ($layer =~ /^(\w+)$/) {
+    error(gettext('automapjson: Missing or invalid layer name.'));
+  }
+  $layer = $1;  # Untaint.
+  return '' unless ($page eq $destpage);
+
+  my $jsonfile = "$page/$layer.json";
+  will_render($page, $jsonfile);
+
+  my @mapitems;
+  foreach my $target (pagespec_match_list($page, $pages,
+                                          sort => 'meta(title)')) {
+    next unless(IkiWiki::PageSpec::match_mapped($target, ''));
+    my $title;
+    if (exists $pagestate{$target} and
+      exists $pagestate{$target}{meta}{title}) {
+      $title = $pagestate{$target}{meta}{title};
+    } else {
+      $title = pagetitle(IkiWiki::basename($target));
+    }
+    foreach my $mapitem (keys %{$pagestate{$target}{automap}{mapitems}}){
+      my $mapdata = $pagestate{$mapitem}{automap}{data};
+      push @mapitems, item2geojson({
+          mapdata => $mapdata,
+          name => $title,
+          link => htmllink($page, $destpage, $target, linktext => $title),
+        });
     }
   }
-  my @output = ();
-  foreach (@result) {
-    my %item = %$_;
-    if (exists $item{backlink}) {
-      $item{link} = htmllink($page, $destpage, $item{backlink});
-      delete $item{backlink};
+
+  if ($include_orphans) {
+    # Any link change.
+    #add_depends($page, "*", deptype("links"));
+    add_depends($page, "mapped(*)");
+    my @orphans = pagespec_match_list(
+      $page, "internal($config{automap_base}/*)",
+      # update when orphans are added/removed
+      deptype => deptype("presence"),
+      filter => sub {
+        my $target = shift;
+        return 1 unless (exists $pagestate{$target}{automap}{data});
+        return 0 unless (exists $pagestate{$target}{automap}{backlink});
+        my $backlink = $pagestate{$target}{automap}{backlink};
+        return 1 unless ($backlink);
+        return (exists $pagestate{$backlink} and
+                exists $pagestate{$backlink}{automap}{mapitems} and 
+                exists $pagestate{$backlink}{automap}{mapitems}{$target});
+      },
+    );
+    foreach my $target (@orphans) {
+      my $mapdata = $pagestate{$target}{automap}{data};
+      my $title = (exists $mapdata->{name} ?  $mapdata->{name} :
+                   $mapdata->{type} . ' ' . $mapdata->{id});
+      my $pagename = "$include_orphans/$title";
+      $pagename =~ s#/+#/#g;
+      push @mapitems, item2geojson({
+          mapdata => $mapdata,
+          name => $title,
+          link => htmllink($page, $destpage, titlepage($pagename),
+            linktext => $title),
+        });
     }
-    push @output, item2geojson(%item);
   }
-  my $output = to_json({
-      type => "FeatureCollection",
-      features => \@output,
-    }, {pretty => 1});
-  return $output;
+  my $output = "var layer_$layer = " . to_json({
+      base => urlto($destpage),
+      geojson => {
+        type => "FeatureCollection",
+        features => \@mapitems,
+      }
+    }, {pretty => 1}) . ";\n";
+  writefile($jsonfile, $config{destdir}, $output);
+  return '';
 }
 
-sub item2geojson (@) {
-  my %item = @_;
+sub item2geojson ($) {
+  my $item = shift;
+  my %mapdata = %{$item->{mapdata}};  # Copy.
   my $data = {
     type => "Feature",
-    id => "$item{type}/$item{id}",
+    id => "$mapdata{type}/$mapdata{id}",
+    name => $item->{name},
     geometry => {
       type => "Point",
-      coordinates => [$item{lon} + 0.0, $item{lat} + 0.0],
+      coordinates => [$mapdata{lon} + 0.0, $mapdata{lat} + 0.0],
     },
   };
-  delete $item{type};
-  delete $item{id};
-  delete $item{lon};
-  delete $item{lat};
-  $data->{properties} = \%item;
+  delete $mapdata{type};
+  delete $mapdata{id};
+  delete $mapdata{lon};
+  delete $mapdata{lat};
+  $data->{properties} = \%mapdata;
+  $data->{link} = $item->{link} if (exists $item->{link});
   return $data;
 }
 
@@ -245,26 +313,47 @@ sub pagetemplate (@) {
   my $destpage = $params{destpage};
   my $template = $params{template};
 
-  if (exists $pagestate{$page}{automap} and
-      exists $pagestate{$page}{automap}{mapitems} and
-      ref $pagestate{$page}{automap}{mapitems}) {
-
-    my @output = ();
-    foreach my $mapitem (keys %{$pagestate{$page}{automap}{mapitems}}) {
-      my %item = %{$pagestate{$mapitem}{automap}};
-      if (exists $item{backlink}) {
-        $item{link} = htmllink($page, $destpage, $item{backlink});
-        delete $item{backlink};
-      }
-      push @output, item2geojson(%item);
-    }
-    my $output = to_json({
-        type => "FeatureCollection",
-        features => \@output,
-      }, {pretty => 1});
-    $template->param('has_map', 1);
-    $template->param('automap_items_json', $output);
+  unless (exists $pagestate{$page}{automap} and
+          exists $pagestate{$page}{automap}{mapitems} and
+          ref $pagestate{$page}{automap}{mapitems}) {
+    return;
   }
+  my @output = ();
+  foreach my $mapitem (keys %{$pagestate{$page}{automap}{mapitems}}) {
+    my $mapdata = $pagestate{$mapitem}{automap}{data};
+    my $title;
+    if (exists $pagestate{$page}{meta}{title}) {
+      $title = $pagestate{$page}{meta}{title};
+    } else {
+      $title = pagetitle(IkiWiki::basename($page));
+    }
+    push (@output, item2geojson({name => $title, mapdata => $mapdata}));
+  }
+  my $json = to_json({type => "FeatureCollection", features => \@output},
+                     {pretty => 1});
+  $template->param('has_map', 1);
+  $template->param('automap_items_json', $json);
+}
+
+package IkiWiki::PageSpec;
+
+sub match_mapped ($$;@) {
+  my $page = shift;
+  my $glob = shift || '*';
+  my $ret = match_glob($page, $glob);
+  if (not $ret) {
+    return $ret;
+  }
+  if (exists $IkiWiki::pagestate{$page}{automap} and
+      exists $IkiWiki::pagestate{$page}{automap}{mapitems} and
+      ref $IkiWiki::pagestate{$page}{automap}{mapitems}) {
+    return IkiWiki::SuccessReason->new(
+      # Assuming "" means non static, or somesuch, yay for proper docs.
+      "$page has map items", $page => $IkiWiki::DEPEND_CONTENT, "" => 1);
+  }
+  return IkiWiki::FailReason->new(
+    "$page has no map items", $page => $IkiWiki::DEPEND_CONTENT, "" => 1);
+#  return match_link($page, $glob, linktype => 'tag', @_);
 }
 
 1;
