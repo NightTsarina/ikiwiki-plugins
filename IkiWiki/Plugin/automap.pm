@@ -234,11 +234,7 @@ sub preprocess_json (@) {
     }
     foreach my $mapitem (keys %{$pagestate{$target}{automap}{mapitems}}){
       my $mapdata = $pagestate{$mapitem}{automap}{data};
-      push @mapitems, item2geojson({
-          mapdata => $mapdata,
-          name => $title,
-          link => htmllink($page, $destpage, $target, linktext => $title),
-        });
+      push @mapitems, item2json({page => $target, mapdata => $mapdata});
     }
   }
 
@@ -265,46 +261,42 @@ sub preprocess_json (@) {
       my $mapdata = $pagestate{$target}{automap}{data};
       my $title = (exists $mapdata->{name} ?  $mapdata->{name} :
                    $mapdata->{type} . ' ' . $mapdata->{id});
-      my $pagename = "$include_orphans/$title";
+      my $pagename = "$include_orphans/" . titlepage($title);
       $pagename =~ s#/+#/#g;
-      push @mapitems, item2geojson({
+      push @mapitems, item2json({
+          title => $title,
+          page => $pagename,
           mapdata => $mapdata,
-          name => $title,
-          link => htmllink($page, $destpage, titlepage($pagename),
-            linktext => $title),
+          create => 1,
         });
     }
   }
-  my $output = "var layer_$layer = " . to_json({
-      base => urlto($destpage),
-      geojson => {
-        type => "FeatureCollection",
-        features => \@mapitems,
-      }
-    }, {pretty => 1}) . ";\n";
-  writefile($jsonfile, $config{destdir}, $output);
+  my $json = to_json(\@mapitems, {pretty => 1});
+  writefile($jsonfile, $config{destdir}, $json);
   return '';
 }
 
-sub item2geojson ($) {
+sub item2json ($) {
   my $item = shift;
   my %mapdata = %{$item->{mapdata}};  # Copy.
-  my $data = {
-    type => "Feature",
-    id => "$mapdata{type}/$mapdata{id}",
-    name => $item->{name},
-    geometry => {
-      type => "Point",
-      coordinates => [$mapdata{lon} + 0.0, $mapdata{lat} + 0.0],
-    },
-  };
-  delete $mapdata{type};
-  delete $mapdata{id};
-  delete $mapdata{lon};
-  delete $mapdata{lat};
-  $data->{properties} = \%mapdata;
-  $data->{link} = $item->{link} if (exists $item->{link});
-  return $data;
+  my %res;
+  $res{page} = $item->{page};
+  if (exists $item->{title}) {
+    $res{title} = $item->{title};
+  } else {
+    if (exists $pagestate{$res{page}}{meta}{title}) {
+      $res{title} = $pagestate{$res{page}}{meta}{title};
+    } else {
+      $res{title} = pagetitle(IkiWiki::basename($res{page}));
+    }
+  }
+  # FIXME: description.
+  $res{create} = 1 if ($item->{create});
+
+  $res{id} = (delete $mapdata{type}) . '/' . (delete $mapdata{id});
+  $res{coord} = [(delete $mapdata{lat}) + 0.0, (delete $mapdata{lon}) + 0.0];
+  $res{prop} = \%mapdata;
+  return \%res;
 }
 
 sub pagetemplate (@) {
@@ -321,18 +313,12 @@ sub pagetemplate (@) {
   my @output = ();
   foreach my $mapitem (keys %{$pagestate{$page}{automap}{mapitems}}) {
     my $mapdata = $pagestate{$mapitem}{automap}{data};
-    my $title;
-    if (exists $pagestate{$page}{meta}{title}) {
-      $title = $pagestate{$page}{meta}{title};
-    } else {
-      $title = pagetitle(IkiWiki::basename($page));
-    }
-    push (@output, item2geojson({name => $title, mapdata => $mapdata}));
+    push (@output, item2json({page => $page, mapdata => $mapdata}));
   }
-  my $json = to_json({type => "FeatureCollection", features => \@output},
-                     {pretty => 1});
+  my $json = to_json(\@output, {pretty => 1});
   $template->param('has_map', 1);
   $template->param('automap_items_json', $json);
+  $template->param('automap_base', urlto('index', $destpage));
 }
 
 package IkiWiki::PageSpec;
