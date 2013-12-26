@@ -221,7 +221,7 @@ sub preprocess_json (@) {
                          undef);
   my $add_to = $params{add_to} || $pages;
   my $default_hidden = $params{default_hidden};
-  my $cluster = $params{cluster};
+  my $cluster = not $params{nocluster};
 
   unless ($layer =~ /^(\w+)$/) {
     error(gettext('automapjson: Missing or invalid layer name.'));
