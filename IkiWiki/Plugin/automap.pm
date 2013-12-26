@@ -106,19 +106,6 @@ sub scan (@) {
   my $page = $params{page};
   my $content = $params{content};
 
-  # Clean data for a page that's being rebuilt.
-  if (exists $pagestate{$page}{automap}{mapitems} and
-      ref $pagestate{$page}{automap}{mapitems}) {
-    # Remove links to this page.
-    foreach my $item (keys %{$pagestate{$page}{automap}{mapitems}}) {
-      if (exists $pagestate{$item}{automap}{backlink} and
-          defined $pagestate{$item}{automap}{backlink} and
-          $pagestate{$item}{automap}{backlink} eq $page) {
-        delete $pagestate{$item}{automap}{backlink};
-      }
-    }
-    delete $pagestate{$page}{automap};
-  }
   # Continue only for data files.
   return if ($page !~ /$data_regex/ or not $content);
   my ($type, $id) = ($1, $2);
@@ -150,13 +137,18 @@ sub scan (@) {
   $pagestate{$page}{automap}{data} = $data;
 }
 
-#FIXME: check modifications.
+my %preprocessed;
+
 sub preprocess_item (@) {
   my %params = @_;
   my $page = $params{page};
   my $destpage = $params{destpage};
   my $preview = $params{preview};
 
+  if (! $preprocessed{$page}) {
+    clean_page($page);
+    $preprocessed{$page} = 1;
+  }
   my $embed = (defined $params{embed} and $params{embed} ne '0');
   my $type = $params{type} || 'node';
   my $id = $params{id};
@@ -201,6 +193,13 @@ sub preprocess_item (@) {
 }
 
 sub preprocess_map (@) {
+  my %params = @_;
+  my $page = $params{page};
+
+  if (! $preprocessed{$page}) {
+    clean_page($page);
+    $preprocessed{$page} = 1;
+  }
 }
 
 sub preprocess_json (@) {
@@ -209,6 +208,10 @@ sub preprocess_json (@) {
   my $destpage = $params{destpage};
   my $preview = $params{preview};
 
+  if (! $preprocessed{$page}) {
+    clean_page($page);
+    $preprocessed{$page} = 1;
+  }
   my $layer = $params{layer} || '';
   my $pages = exists $params{pages} ? $params{pages} : 'mapped(*)';
   my $include_orphans;
@@ -284,6 +287,24 @@ sub preprocess_json (@) {
     pagespec => $pages,
   };
   return '';
+}
+
+sub clean_page ($) {
+  my $page = shift;
+  # Clean data for a page that's being rebuilt.
+  if (exists $pagestate{$page}{automap}{mapitems} and
+      ref $pagestate{$page}{automap}{mapitems}) {
+    # Remove links to this page.
+    foreach my $item (keys %{$pagestate{$page}{automap}{mapitems}}) {
+      if (exists $pagestate{$item}{automap}{backlink} and
+          defined $pagestate{$item}{automap}{backlink} and
+          $pagestate{$item}{automap}{backlink} eq $page) {
+        delete $pagestate{$item}{automap}{backlink};
+      }
+    }
+    debug ("automap::clean_page $page");
+    delete $pagestate{$page}{automap};
+  }
 }
 
 sub item2json ($) {
