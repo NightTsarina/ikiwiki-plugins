@@ -214,12 +214,14 @@ sub preprocess_json (@) {
   }
 
   my $layer = $params{layer} || '';
+  my $description = $params{description} || $layer;
   my $pages = exists $params{pages} ? $params{pages} : 'mapped(*)';
   my $include_orphans = (defined $params{include_orphans} ?
                          ($params{include_orphans} || $config{automap_base}) :
                          undef);
   my $add_to = $params{add_to} || $pages;
   my $default_hidden = $params{default_hidden};
+  my $cluster = $params{cluster};
 
   unless ($layer =~ /^(\w+)$/) {
     error(gettext('automapjson: Missing or invalid layer name.'));
@@ -294,7 +296,9 @@ sub preprocess_json (@) {
   $pagestate{$page}{automap}{layer}{$layer} = {
     json => $jsonfile,
     pagespec => $add_to,
+    description => $description,
     default_hidden => $default_hidden,
+    cluster => $cluster,
   };
   return '';
 }
@@ -373,7 +377,9 @@ sub pagetemplate (@) {
     }
     push @layers, {
       layer_name => $layer,
+      layer_desc => $layerdata->{description},
       layer_hidden => $layerdata->{default_hidden} ? 'true' : 'false',
+      layer_cluster => $layerdata->{cluster} ? 'true' : 'false',
       layer_url => urlto($layerdata->{json}, $destpage)};
     push @layer_names, $layer;
   }
