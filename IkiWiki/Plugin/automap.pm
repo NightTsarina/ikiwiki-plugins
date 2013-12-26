@@ -157,7 +157,7 @@ sub preprocess_item (@) {
   my $destpage = $params{destpage};
   my $preview = $params{preview};
 
-  my $embed = $params{embed};
+  my $embed = (defined $params{embed} and $params{embed} ne '0');
   my $type = $params{type} || 'node';
   my $id = $params{id};
 
@@ -191,7 +191,10 @@ sub preprocess_item (@) {
   }
 
   if ($embed) {
-    # FIXME
+    $pagestate{$page}{automap}{maps} ||= [];
+    my $nr = scalar(@{$pagestate{$page}{automap}{maps}});
+    push @{$pagestate{$page}{automap}{maps}}, "automap-$nr";
+    return "<div id=\"automap-$nr\" class=\"automap\"></div>\n";
   }
 
   return '';
@@ -273,6 +276,13 @@ sub preprocess_json (@) {
   }
   my $json = to_json(\@mapitems, {pretty => 1});
   writefile($jsonfile, $config{destdir}, $json);
+
+  # Easy way to get all layers.
+  $wikistate{automap}{layers}{$layer} = $page;
+  $pagestate{$page}{automap}{layer}{$layer} = {
+    json => $jsonfile,
+    pagespec => $pages,
+  };
   return '';
 }
 
@@ -306,8 +316,8 @@ sub pagetemplate (@) {
   my $template = $params{template};
 
   unless (exists $pagestate{$page}{automap} and
-          exists $pagestate{$page}{automap}{mapitems} and
-          ref $pagestate{$page}{automap}{mapitems}) {
+          exists $pagestate{$page}{automap}{maps} and
+          ref $pagestate{$page}{automap}{maps}) {
     return;
   }
   my @output = ();
@@ -316,9 +326,36 @@ sub pagetemplate (@) {
     push (@output, item2json({page => $page, mapdata => $mapdata}));
   }
   my $json = to_json(\@output, {pretty => 1});
+
+  my @layers = ();
+  my @layer_names = ();
+  foreach my $layer (keys %{$wikistate{automap}{layers}}) {
+    my $layerpage = $wikistate{automap}{layers}{$layer};
+    if (not exists $pagestate{$layerpage}{automap}{layer} or
+        not exists $pagestate{$layerpage}{automap}{layer}{$layer}) {
+      next;
+    }
+    my $layerdata = $pagestate{$layerpage}{automap}{layer}{$layer};
+    if (not pagespec_match($page, $layerdata->{pagespec},
+                           location => $layerpage)) {
+      next;
+    }
+    push @layers, {layer_name => $layer,
+                   layer_url => urlto($layerdata->{json}, $destpage)};
+    push @layer_names, $layer;
+  }
+  unshift @layer_names, 'this_page';
+
+  my @maps = ();
+  foreach my $map (@{$pagestate{$page}{automap}{maps}}) {
+    push @maps, {map_div => $map, map_layers_json => to_json(\@layer_names)};
+  }
+
   $template->param('has_map', 1);
   $template->param('automap_items_json', $json);
   $template->param('automap_base', urlto('index', $destpage));
+  $template->param('automap_layers', \@layers);
+  $template->param('automap_maps', \@maps);
 }
 
 package IkiWiki::PageSpec;
