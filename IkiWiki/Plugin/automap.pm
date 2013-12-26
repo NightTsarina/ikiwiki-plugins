@@ -212,16 +212,24 @@ sub preprocess_json (@) {
     clean_page($page);
     $preprocessed{$page} = 1;
   }
+
   my $layer = $params{layer} || '';
   my $pages = exists $params{pages} ? $params{pages} : 'mapped(*)';
-  my $include_orphans;
-  if (exists $params{include_orphans}) {
-    $include_orphans = $params{include_orphans} || $config{automap_base};
-  }
+  my $include_orphans = (defined $params{include_orphans} ?
+                         ($params{include_orphans} || $config{automap_base}) :
+                         undef);
+  my $add_to = $params{add_to} || $pages;
+  my $default_hidden = $params{default_hidden};
+
   unless ($layer =~ /^(\w+)$/) {
     error(gettext('automapjson: Missing or invalid layer name.'));
   }
   $layer = $1;  # Untaint.
+  if (exists $wikistate{automap}{layers}{$layer} and
+      $wikistate{automap}{layers}{$layer} ne $page) {
+    error(gettext('automapjson: Duplicate layer name.'));
+  }
+
   return '' unless ($page eq $destpage);
 
   my $jsonfile = "$page/$layer.json";
@@ -252,6 +260,7 @@ sub preprocess_json (@) {
       $page, "internal($config{automap_base}/*)",
       # update when orphans are added/removed
       deptype => deptype("presence"),
+      sort => 'title',
       filter => sub {
         my $target = shift;
         return 1 unless (exists $pagestate{$target}{automap}{data});
@@ -277,14 +286,15 @@ sub preprocess_json (@) {
         });
     }
   }
-  my $json = to_json(\@mapitems, {pretty => 1});
+  my $json = to_json(\@mapitems);
   writefile($jsonfile, $config{destdir}, $json);
 
   # Easy way to get all layers.
   $wikistate{automap}{layers}{$layer} = $page;
   $pagestate{$page}{automap}{layer}{$layer} = {
     json => $jsonfile,
-    pagespec => $pages,
+    pagespec => $add_to,
+    default_hidden => $default_hidden,
   };
   return '';
 }
@@ -361,8 +371,10 @@ sub pagetemplate (@) {
                            location => $layerpage)) {
       next;
     }
-    push @layers, {layer_name => $layer,
-                   layer_url => urlto($layerdata->{json}, $destpage)};
+    push @layers, {
+      layer_name => $layer,
+      layer_hidden => $layerdata->{default_hidden} ? 'true' : 'false',
+      layer_url => urlto($layerdata->{json}, $destpage)};
     push @layer_names, $layer;
   }
   unshift @layer_names, 'this_page';
