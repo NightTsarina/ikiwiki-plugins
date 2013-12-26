@@ -70,7 +70,7 @@ function add_main_layer(name, data) {
 function create_map(name, layers, base_url, page, cgi_url, tiles,
                     attrib) {
   layers = layers || [];
-  base_url = base_url || '';
+  base_url = base_url ? (base_url + '/') : '';
   page = page || '';
   cgi_url = cgi_url || '/ikiwiki.cgi';
   tiles = tiles || 'http://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png';
@@ -138,7 +138,7 @@ function create_map(name, layers, base_url, page, cgi_url, tiles,
       } else if (item['page'] == page) {
         link = '<span class="selflink">' + item['title'] + '</span>';
       } else {
-        link = ('<a href="' + base_url + '/' + item['page'] + '">' +
+        link = ('<a href="' + base_url + item['page'] + '">' +
                 item['title'] + '</a>');
       }
       var text = '<b>' + link + '</b>';
