@@ -392,7 +392,10 @@ sub pagetemplate (@) {
 
   $template->param('has_map', 1);
   $template->param('automap_items_json', $json);
-  $template->param('automap_base', urlto('index', $destpage));
+  $template->param('automap_page', $destpage);
+  $template->param('automap_baseurl', urlto('index', $destpage));
+  $template->param('automap_createurl', IkiWiki::cgiurl(
+      do => 'create', from => $destpage));
   $template->param('automap_layers', \@layers);
   $template->param('automap_maps', \@maps);
 }
