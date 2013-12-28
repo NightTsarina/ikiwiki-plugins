@@ -133,8 +133,8 @@ function create_map(name, layers, base_url, page, create_url, tiles,
       var link;
       if (item['create']) {
         link = ('<span class="createlink"><a href="' + create_url +
-                item['page'] + '" rel="nofollow">?</a>' + item['title'] +
-                '</span>');
+                '&amp;page=' + item['page'] + '" rel="nofollow">?</a>' +
+                item['title'] + '</span>');
       } else if (item['page'] == page) {
         link = '<span class="selflink">' + item['title'] + '</span>';
       } else {
