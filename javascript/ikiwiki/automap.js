@@ -67,12 +67,12 @@ function add_main_layer(name, data) {
  *   attrib: HTML text for data attribution.
  */
 
-function create_map(name, layers, base_url, page, cgi_url, tiles,
+function create_map(name, layers, base_url, page, create_url, tiles,
                     attrib) {
   layers = layers || [];
   base_url = base_url ? (base_url + '/') : '';
   page = page || '';
-  cgi_url = cgi_url || '';
+  create_url = create_url || '';
   tiles = tiles || 'http://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png';
   attrib = attrib || (
     'Map data &copy; <a href="http://openstreetmap.org">' +
@@ -132,8 +132,9 @@ function create_map(name, layers, base_url, page, cgi_url, tiles,
 
       var link;
       if (item['create']) {
-        link = ('<span class="createlink"><a href="' + cgi_url + item['page']
-                + '" rel="nofollow">?</a>' + item['title'] + '</span>');
+        link = ('<span class="createlink"><a href="' + create_url +
+                item['page'] + '" rel="nofollow">?</a>' + item['title'] +
+                '</span>');
       } else if (item['page'] == page) {
         link = '<span class="selflink">' + item['title'] + '</span>';
       } else {
