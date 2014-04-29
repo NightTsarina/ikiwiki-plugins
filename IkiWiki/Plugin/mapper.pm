@@ -87,6 +87,8 @@ sub checkconfig () {
 sub scan (@) {
 }
 
+our %layers;
+
 sub preprocess_new_layer (@) {
   my %params = @_;
   my $page = delete $params{page};
@@ -99,11 +101,8 @@ sub preprocess_new_layer (@) {
     _geterror('mapper_new_layer: Missing or invalid layer name.');
   }
   $name = $1;  # Untaint.
-  if (exists $pagestate{$page}{mapper}{layer}{$name}) {
-    _geterror('mapper_new_layer: Duplicate layer name.');
-  }
   $description = delete $params{description} || $name;
-  $type = lc(delete $params{type}) || 'empty';
+  $type = lc(delete $params{type} || 'empty');
   my %layer_params = (
     name => $name,
     description => $description,
@@ -136,14 +135,28 @@ sub preprocess_new_layer (@) {
       join(', ', keys(%params)));
   }
 
-  my $jsonfile = "$page/$name.json";
+  my $layerpage = "$page/$name";
+  my $jsonfile = "$layerpage.json";
   will_render($page, $jsonfile);
-  
+
   return '' unless ($page eq $destpage);
 
-  $pagestate{$page}{mapper}{layer}{$name}{data} ||= {};
-  $pagestate{$page}{mapper}{layer}{$name}{params} = \%params;
-  return '' unless (defined wantarray);
+  unless (defined wantarray) {
+    # Scan phase: create layer and exit.
+    if (exists $layers{$layerpage}) {
+      return '';
+    }
+    $layers{$layerpage} = {
+      waypoints => {},
+      parameters => \%layer_params,
+    };
+    return '';
+  }
+  if (exists $pagestate{$page}{mapper}{layer}{$name}) {
+    _geterror('mapper_new_layer: Duplicate layer name.');
+  }
+  $pagestate{$page}{mapper}{layer}{$name} = $layers{$layerpage};
+  return '';
 }
 
 sub preprocess_add_waypoint (@) {
