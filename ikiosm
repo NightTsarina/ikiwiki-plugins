@@ -1,0 +1,56 @@
+Estructura
+
+* data source
+ * overpass query
+ * extra waypoints
+
+* page <-> map item matching
+ * Links on map, geolocation
+ * metadata imported from item
+
+Data - automap.pm
+
+pagestate{$page}{automap}
+  * data: map data
+  * backlink: dupes, orphans
+  * mapitems{$datapage}: link to map data
+  * maps: embedded maps
+  * layer: json data
+
+wikistate{automap}
+  * layers{$layer}: layer index
+
+Nueva
+=====
+
+pagestate:
+ waypoints:
+   $map:
+     $layer:
+     - $waypoint
+ main_waypoint: &$waypoint
+ embedded_maps:
+ - options
+ layer:
+   $name:
+     waypoints: {..}
+     parameters: {..}
+
+wikistate:
+ - layers{$layer}: $page	# layer index
+ - config{$pagespec}: $page	# config index
+
+
+comandos
+========
+
+mapper_new_layer
+  name=S
+  description=S
+  type=empty
+  type=osm
+    endpoint=S
+    query=S
+    maxitems=N
+  type=orphans
+    fromlayer=S
