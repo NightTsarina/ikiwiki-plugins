@@ -8,20 +8,18 @@ Estructura
  * Links on map, geolocation
  * metadata imported from item
 
-Data - automap.pm
+Dependencies
+============
 
-pagestate{$page}{automap}
-  * data: map data
-  * backlink: dupes, orphans
-  * mapitems{$datapage}: link to map data
-  * maps: embedded maps
-  * layer: json data
+Page that references waypoints:
+ Title change -> affects layer
+ Change in waypoint -> affects page
 
-wikistate{automap}
-  * layers{$layer}: layer index
+Page that adds waypoints:
+ Title/waypoint change -> affects layer
 
-Nueva
-=====
+Data
+====
 
 pagestate:
  waypoints:
